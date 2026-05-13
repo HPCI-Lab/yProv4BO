@@ -2,6 +2,9 @@
 import json
 import torch
 from typing import Tuple
+import sys
+sys.path.append("/Users/gabrielepadovani/Desktop/Università/yProv4ML")
+import yprov4ml
 
 from botorch.models.gp_regression import SingleTaskGP
 from botorch.models.transforms.outcome import Standardize
@@ -121,9 +124,7 @@ def run_bayes_opt_loop(
 
         save_gp(train_x, train_y, iteration, ctx)
 
-        x_next = next_candidate(
-            model, train_x, space.bounds_norm, space.ref_point
-        ).squeeze(0)
+        x_next = next_candidate(model, train_x, space.bounds_norm, space.ref_point).squeeze(0)
 
         p = space.params_to_dict(x_next)
 
@@ -135,5 +136,8 @@ def run_bayes_opt_loop(
 
         if VERBOSE:
             print_pareto(train_x, train_y, iteration, ctx)
+
+        yprov4ml.log_system_metrics("iteration", step=iteration)
+        
 
     return model

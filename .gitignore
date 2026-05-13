@@ -1,4 +1,6 @@
-*/__pycache__
+**/__pycache__
 MNIST
 deepcam_results
-*/.DS_Store
+**/.DS_Store
+.vscode
+powermetrics_log.txt

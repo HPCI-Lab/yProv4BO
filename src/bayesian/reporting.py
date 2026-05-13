@@ -5,6 +5,10 @@ from botorch.utils.multi_objective.pareto import is_non_dominated
 
 from src.consts import VERBOSE
 
+import sys
+sys.path.append("/Users/gabrielepadovani/Desktop/Università/yProv4ML")
+import yprov4ml
+
 
 def print_pareto(train_x, train_y, iteration, ctx):
     space = ctx.space
@@ -25,9 +29,8 @@ def print_pareto(train_x, train_y, iteration, ctx):
 
 
 def save_state(train_x, train_y, iteration, ctx):
-    torch.save({"train_x": train_x, "train_y": train_y},
-               ctx.state_dir / f"state_iter{iteration:03d}.pt")
-
+    torch.save({"train_x": train_x, "train_y": train_y}, ctx.state_dir / f"state_iter{iteration:03d}.pt")
+    yprov4ml.log_artifact(f"mlstate_iter{iteration:03d}", ctx.state_dir / f"state_iter{iteration:03d}.pt", step=iteration, context="tmp", source="yprov4bo", log_copy_in_prov_directory=True, log_copy_subdirectory="../../../")
 
 def save_gp(train_x, train_y, iteration, ctx):
     space = ctx.space
@@ -40,6 +43,7 @@ def save_gp(train_x, train_y, iteration, ctx):
         "iteration":   iteration,
         "run_id":      ctx.run_id,
     }, ctx.gp_dir / f"state_iter{iteration:03d}.pt")
+    # yprov4ml.log_artifact(f"gpstate_iter{iteration:03d}", ctx.gp_dir / f"state_iter{iteration:03d}.pt", context="tmp", log_copy_in_prov_directory=False)
 
 
 def final_report(train_x, train_y, ctx):
@@ -58,6 +62,8 @@ def final_report(train_x, train_y, ctx):
     df   = pd.DataFrame(rows).sort_values(primary_obj, ascending=False)
     path = ctx.run_dir / "pareto_front_final.csv"
     df.to_csv(path, index=False)
+    # yprov4ml.log_artifact(f"pareto_front_final", ctx.run_dir / "pareto_front_final.csv", context="tmp", log_copy_in_prov_directory=False)
+
     if VERBOSE:
         print("\n" + "=" * 60)
         print(f"  COMPLETE  [{ctx.run_id}]")

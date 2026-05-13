@@ -7,8 +7,8 @@ _DEFAULT_CONFIG = Path("./examples/params.yaml")
 
 BASE_RESULTS_DIR = Path("./deepcam_results")
 
-N_INITIAL     = 3
-N_ITERATIONS  = 50
+N_INITIAL     = 1
+N_ITERATIONS  = 5
 BATCH_SIZE_BO = 1
 MAX_EPOCHS    = 1
 

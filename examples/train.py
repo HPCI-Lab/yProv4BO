@@ -204,8 +204,8 @@ def main():
     train_sampler = DistributedSampler(train_ds, num_replicas=world_size, rank=rank, shuffle=True, seed=pargs.seed) if world_size > 1 else None
     val_sampler   = DistributedSampler(val_ds,   num_replicas=world_size, rank=rank, shuffle=False) if world_size > 1 else None
 
-    train_ds = Subset(train_ds, range(200))
-    val_ds = Subset(val_ds, range(200))
+    train_ds = Subset(train_ds, range(12))
+    val_ds = Subset(val_ds, range(12))
 
     train_loader = DataLoader(train_ds, batch_size=pargs.local_batch_size,
                               sampler=train_sampler,

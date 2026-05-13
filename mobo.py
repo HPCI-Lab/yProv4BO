@@ -5,6 +5,9 @@ import argparse
 import torch
 from pathlib import Path
 from datetime import datetime
+import sys
+sys.path.append("/Users/gabrielepadovani/Desktop/Università/yProv4ML")
+import yprov4ml
 
 from botorch.utils.sampling import draw_sobol_samples
 
@@ -26,13 +29,29 @@ def run_mobo(
     nproc_per_node,
     results_dir: Path,
     space: ParamSpace,
+    save_ml_training : bool, 
 ):
-    ctx     = RunContext(run_id, results_dir, data_dir, train_script, nnodes, nproc_per_node, max_epochs, space)
+    ctx     = RunContext(run_id, results_dir, data_dir, train_script, nnodes, nproc_per_node, max_epochs, space, save_ml_training)
     train_x = torch.empty((0, space.n_params),     dtype=torch.double)
     train_y = torch.empty((0, space.n_objectives), dtype=torch.double)
 
     # --- Phase 1: Sobol initialisation ---------------------------------------
     sobol_x = draw_sobol_samples(bounds=space.bounds_norm, n=n_initial, q=1).squeeze(1)
+    
+    yprov4ml.start_run(
+        prov_user_namespace="www.example.org",
+        provenance_save_dir=str(results_dir), 
+        experiment_name=str(ctx.run_id), 
+        collect_all_processes=False,
+        save_after_n_logs=100,
+        metrics_file_type="csv",
+        disable_codecarbon=True, 
+        use_run_id=0, 
+    )
+    # This is for compatibility of the two saving mechanisms
+    ctx.init_spaces()
+
+    yprov4ml.log_system_metrics("setup", step=0)
 
     for i in range(n_initial):
         x = sobol_x[i]
@@ -42,13 +61,17 @@ def run_mobo(
 
         train_x = torch.cat([train_x, x.unsqueeze(0)])
         train_y = torch.cat([train_y, space.to_objectives(*result).unsqueeze(0)])
+        
+        yprov4ml.log_system_metrics("initial", step=i)
 
     save_state(train_x, train_y, 0, ctx)
 
     model = run_bayes_opt_loop(train_x, train_y, 0, n_iter, ctx)
 
     if model is not None:
-        save_gp(model, train_x, train_y, n_iter, ctx)
+        save_gp(train_x, train_y, n_iter, ctx)
+
+    yprov4ml.end_run(False, False, False)
 
     return final_report(train_x, train_y, ctx)
 
@@ -63,25 +86,40 @@ def resume_from_checkpoint(
     max_epochs,
     results_dir: Path,
     space: ParamSpace,
+    save_ml_training : bool
 ):
-    state   = torch.load(ckpt_path)
+    state   = torch.load(ckpt_path) 
     train_x = state["train_x"]
     train_y = state["train_y"]
 
+    run_id = "_".join(ckpt_path.split("/")[1].split("_")[:-1])
     done = int(Path(ckpt_path).stem.split("iter")[1])
-    orig = Path(ckpt_path).parent.parent.name
-    ctx  = RunContext(
-        f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        f"_resumed_{orig}_iter{done:03d}",
-        results_dir, data_dir, train_script, nnodes, nproc_per_node, max_epochs, space,
-    )
+    ctx  = RunContext(run_id, results_dir, data_dir, train_script, nnodes, nproc_per_node, max_epochs, space, save_ml_training)
     if VERBOSE:
         print(f"Resumed from iter {done} — {len(train_x)} pts evaluated.")
+
+    yprov4ml.start_run(
+        prov_user_namespace="www.example.org",
+        provenance_save_dir=str(results_dir), 
+        experiment_name=str(ctx.run_id), 
+        collect_all_processes=False,
+        save_after_n_logs=100,
+        metrics_file_type="csv",
+        disable_codecarbon=True, 
+        use_run_id=0, 
+    )
+    # This is for compatibility of the two saving mechanisms
+    ctx.init_spaces()
+
+    yprov4ml.log_system_metrics("setup", step=0)
 
     model = run_bayes_opt_loop(train_x, train_y, done, n_iter, ctx)
 
     if model:
-        save_gp(model, train_x, train_y, n_iter, ctx)
+        save_gp(train_x, train_y, n_iter, ctx)
+    
+    yprov4ml.end_run(False, False, False)
+
     return final_report(train_x, train_y, ctx)
 
 
@@ -90,35 +128,23 @@ def resume_from_checkpoint(
 # =============================================================================
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="MOBO — runs inside a BSub/Slurm job or locally, "
-                    "launches train.py via torchrun subprocess per iteration"
-    )
+    parser = argparse.ArgumentParser(description="MOBO — runs inside a BSub/Slurm job or locally, launches train.py via torchrun subprocess per iteration")
     # ---- paths / identity --------------------------------------------------
-    parser.add_argument("--data_dir",     required=True,
-                        help="Path to the dataset root")
-    parser.add_argument("--train_script", default=_DEFAULT_TRAIN_SCRIPT,
-                        help=f"Absolute path to train.py (default: {_DEFAULT_TRAIN_SCRIPT})")
-    parser.add_argument("--results_dir",  default=str(BASE_RESULTS_DIR),
-                        help="Root directory for all run outputs")
-    parser.add_argument("--config",       default=None,
-                        help="Path to hpo_config.yaml (default: examples/hpo_config.yaml)")
-    parser.add_argument("--run_id",       default=None,
-                        help="Optional run identifier")
-    parser.add_argument("--resume",       default=None,
-                        help="Path to state_iterXXX.pt checkpoint to resume from")
+    parser.add_argument("--data_dir", required=True, help="Path to the dataset root")
+    parser.add_argument("--train_script", default=_DEFAULT_TRAIN_SCRIPT, help=f"Absolute path to train.py (default: {_DEFAULT_TRAIN_SCRIPT})")
+    parser.add_argument("--results_dir", default=str(BASE_RESULTS_DIR), help="Root directory for all run outputs")
+    parser.add_argument("--config", default=None, help="Path to hpo_config.yaml (default: examples/hpo_config.yaml)")
+    parser.add_argument("--run_id", default=None, help="Optional run identifier")
+    parser.add_argument("--resume",default=None, help="Path to state_iterXXX.pt checkpoint to resume from")
     # ---- BO budget ---------------------------------------------------------
-    parser.add_argument("--n_iter",    type=int, default=N_ITERATIONS,
-                        help=f"BO iterations (default: {N_ITERATIONS})")
-    parser.add_argument("--n_initial", type=int, default=N_INITIAL,
-                        help=f"Sobol initialisation points (default: {N_INITIAL})")
+    parser.add_argument("--n_iter", type=int, default=N_ITERATIONS, help=f"BO iterations (default: {N_ITERATIONS})")
+    parser.add_argument("--n_initial", type=int, default=N_INITIAL, help=f"Sobol initialisation points (default: {N_INITIAL})")
     # ---- distributed / compute budget --------------------------------------
-    parser.add_argument("--nnodes",         type=int, default=NNODES,
-                        help=f"Number of nodes per training run (default: {NNODES})")
-    parser.add_argument("--nproc_per_node", type=int, default=NPROC_PER_NODE,
-                        help=f"GPUs/processes per node (default: {NPROC_PER_NODE})")
-    parser.add_argument("--max_epochs",     type=int, default=MAX_EPOCHS,
-                        help=f"Training epochs per trial (default: {MAX_EPOCHS})")
+    parser.add_argument("--nnodes", type=int, default=NNODES, help=f"Number of nodes per training run (default: {NNODES})")
+    parser.add_argument("--nproc_per_node", type=int, default=NPROC_PER_NODE, help=f"GPUs/processes per node (default: {NPROC_PER_NODE})")
+    parser.add_argument("--max_epochs", type=int, default=MAX_EPOCHS, help=f"Training epochs per trial (default: {MAX_EPOCHS})")
+    # ---- Provenance configs --------------------------------------
+    parser.add_argument("--save_ml_training", type=bool, default=False, help=f"Save trial trainings into their respective provenance files")
     args = parser.parse_args()
 
     space = load_param_space(config_path=args.config)
@@ -132,11 +158,12 @@ if __name__ == "__main__":
         resume_from_checkpoint(
             args.resume, args.data_dir, args.n_iter,
             args.train_script, args.nnodes, args.nproc_per_node,
-            args.max_epochs, results_dir, space,
+            args.max_epochs, results_dir, space, args.save_ml_training
         )
     else:
         run_mobo(
             args.data_dir, args.n_iter, args.n_initial, args.max_epochs,
             args.run_id, args.train_script, args.nnodes, args.nproc_per_node,
-            results_dir, space,
+            results_dir, space, args.save_ml_training
         )
+
