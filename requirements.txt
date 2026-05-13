@@ -1,0 +1,7 @@
+matplotlib
+torch
+torchvision
+botorch
+tqdm
+pandas
+yprov4ml

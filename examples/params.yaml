@@ -1,0 +1,84 @@
+# hpo_config.yaml
+# Edit this file to change the hyperparameter search space and objectives.
+# No Python changes are needed for routine HPO experiments.
+
+# ---------------------------------------------------------------------------
+# Parameters
+# ---------------------------------------------------------------------------
+# Each entry must have:
+#   name    – key used in the dict passed to the training script
+#   type    – one of: log_float | float | int | categorical
+#   bounds  – [lo, hi] for log_float / float / int  (ignored for categorical)
+#   choices – list of allowed values for categorical params
+#             set to null if the list is determined at runtime (e.g. world-size
+#             dependent) and supplied via dynamic_choices in load_param_space()
+#   clip    – [min, max] optional hard clamp applied after decoding (float/log_float only)
+#
+parameters:
+  - name:   nnodes
+    type:   int
+    bounds: [1, 1]
+    fixed: true
+
+  - name:   nproc_per_node
+    type:   int
+    bounds: [1, 1]
+    fixed: true
+
+  - name:   walltime
+    type:   log_float
+    bounds: [1.0e-4, 1.0e-2]
+    fixed: true
+
+  - name:   start_lr
+    type:   log_float
+    bounds: [1.0e-4, 1.0e-2]
+    fixed: false
+
+  - name:   weight_decay
+    type:   log_float
+    bounds: [1.0e-6, 1.0e-2]
+    clip:   [0.0, 1.0e-2]
+    fixed: false
+
+  - name:   local_batch_size
+    type:   categorical
+    choices: [1, 2, 4]
+    fixed: false
+
+  - name:   lr_schedule
+    type:   categorical
+    choices: [cosine_annealing, multistep]
+    fixed: false
+
+  - name:   lr_warmup_steps
+    type:   int
+    bounds: [0, 800]
+    fixed: false
+
+  - name:   batchnorm_group_size
+    type:   categorical
+    choices: null          # populated at runtime via dynamic_choices
+    fixed: false
+
+  - name:   optimizer
+    type:   categorical
+    choices: [Adam, AdamW]
+    fixed: false
+
+# ---------------------------------------------------------------------------
+# Objectives
+# ---------------------------------------------------------------------------
+# direction: maximize | minimize
+# BoTorch always maximises internally; "minimize" objectives are negated.
+#
+objectives:
+  - name:      iou_validation
+    direction: maximize
+  - name:      energy_kWh
+    direction: minimize
+
+# ---------------------------------------------------------------------------
+# Reference point (in maximisation space — after negation of minimised objectives)
+# ---------------------------------------------------------------------------
+ref_point: [-0.1, -0.5]
